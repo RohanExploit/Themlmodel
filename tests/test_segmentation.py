@@ -1,7 +1,14 @@
 import numpy as np
 import unittest
 
-from themlmodel import SegmentationConfig, TinySegmentationModel, compute_iou, evaluate_model, train_model
+from themlmodel import (
+    SegmentationConfig,
+    TinySegmentationModel,
+    benchmark_model,
+    compute_iou,
+    evaluate_model,
+    train_model,
+)
 
 
 MIN_EXPECTED_TRAIN_IOU = 0.80
@@ -56,6 +63,27 @@ class SegmentationTests(unittest.TestCase):
         self.assertGreater(strong_metrics["iou"], weak_metrics["iou"])
         self.assertGreater(strong_metrics["iou"], MIN_EXPECTED_TRAIN_IOU)
         self.assertGreater(strong_metrics["pixel_accuracy"], MIN_EXPECTED_TRAIN_PIXEL_ACCURACY)
+
+    def test_benchmark_reports_metric_gains(self):
+        images, masks = _synthetic_dataset()
+        bench = benchmark_model(
+            images,
+            masks,
+            config=SegmentationConfig(epochs=250, learning_rate=0.1, seed=42),
+            threshold=0.5,
+        )
+
+        self.assertIn("baseline_iou", bench)
+        self.assertIn("trained_iou", bench)
+        self.assertIn("iou_gain", bench)
+        self.assertIn("baseline_pixel_accuracy", bench)
+        self.assertIn("trained_pixel_accuracy", bench)
+        self.assertIn("pixel_accuracy_gain", bench)
+
+        self.assertGreater(bench["iou_gain"], 0.0)
+        self.assertGreater(bench["pixel_accuracy_gain"], 0.0)
+        self.assertGreater(bench["trained_iou"], MIN_EXPECTED_TRAIN_IOU)
+        self.assertGreater(bench["trained_pixel_accuracy"], MIN_EXPECTED_TRAIN_PIXEL_ACCURACY)
 
     def test_compute_iou_validates_shape(self):
         pred = np.zeros((2, 8, 8), dtype=np.float64)
