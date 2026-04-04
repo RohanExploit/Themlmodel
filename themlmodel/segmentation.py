@@ -156,3 +156,39 @@ def evaluate_model(model: TinySegmentationModel, images: np.ndarray, masks: np.n
     true = _binarize_mask(masks, threshold=threshold, positive_on_nonzero=True)
     pixel_accuracy = float(np.mean(pred == true))
     return {"iou": iou, "pixel_accuracy": pixel_accuracy}
+
+
+def benchmark_model(
+    images: np.ndarray,
+    masks: np.ndarray,
+    config: SegmentationConfig | None = None,
+    threshold: float = 0.5,
+) -> dict[str, float]:
+    """Benchmark untrained baseline vs trained model on the same dataset."""
+    if config is None:
+        config = SegmentationConfig()
+    if images.ndim != 4:
+        raise ValueError("images must have shape [N, C, H, W]")
+    if masks.ndim != 3:
+        raise ValueError("masks must have shape [N, H, W]")
+    if images.shape[0] != masks.shape[0] or images.shape[2:] != masks.shape[1:]:
+        raise ValueError("image/mask batch or spatial shape mismatch")
+
+    channel_mean = np.mean(images, axis=(0, 2, 3))
+    channel_std = np.std(images, axis=(0, 2, 3))
+
+    baseline_model = TinySegmentationModel(in_channels=images.shape[1], seed=config.seed)
+    baseline_model.set_normalization(channel_mean, channel_std)
+    baseline_metrics = evaluate_model(baseline_model, images, masks, threshold=threshold)
+
+    trained_model = train_model(images, masks, config=config)
+    trained_metrics = evaluate_model(trained_model, images, masks, threshold=threshold)
+
+    return {
+        "baseline_iou": baseline_metrics["iou"],
+        "baseline_pixel_accuracy": baseline_metrics["pixel_accuracy"],
+        "trained_iou": trained_metrics["iou"],
+        "trained_pixel_accuracy": trained_metrics["pixel_accuracy"],
+        "iou_gain": trained_metrics["iou"] - baseline_metrics["iou"],
+        "pixel_accuracy_gain": trained_metrics["pixel_accuracy"] - baseline_metrics["pixel_accuracy"],
+    }
