@@ -76,6 +76,17 @@ class TinySegmentationModel:
 
 
 def compute_iou(pred_probs: np.ndarray, true_masks: np.ndarray, threshold: float = 0.5) -> float:
+    """Compute mean IoU across a batch of predicted probabilities and masks.
+
+    Args:
+        pred_probs: Array shaped [N, H, W] with per-pixel probabilities.
+        true_masks: Array shaped [N, H, W] with binary ground-truth masks.
+        threshold: Probability cutoff used to binarize predictions.
+
+    Returns:
+        Mean IoU across samples. Samples with empty prediction and target union
+        are treated as perfect matches and assigned IoU=1.0.
+    """
     if pred_probs.shape != true_masks.shape:
         raise ValueError("predictions and masks must have the same shape")
     pred = (pred_probs >= threshold).astype(np.uint8)
@@ -91,6 +102,16 @@ def compute_iou(pred_probs: np.ndarray, true_masks: np.ndarray, threshold: float
 
 
 def train_model(images: np.ndarray, masks: np.ndarray, config: SegmentationConfig | None = None) -> TinySegmentationModel:
+    """Train a tiny from-scratch segmentation model.
+
+    Args:
+        images: Input batch shaped [N, C, H, W].
+        masks: Binary target masks shaped [N, H, W].
+        config: Optional training hyperparameters.
+
+    Returns:
+        A trained TinySegmentationModel.
+    """
     if config is None:
         config = SegmentationConfig()
     if images.ndim != 4:
@@ -110,6 +131,19 @@ def train_model(images: np.ndarray, masks: np.ndarray, config: SegmentationConfi
 
 
 def evaluate_model(model: TinySegmentationModel, images: np.ndarray, masks: np.ndarray, threshold: float = 0.5) -> dict[str, float]:
+    """Evaluate segmentation performance with IoU and pixel accuracy.
+
+    Args:
+        model: Trained segmentation model.
+        images: Input batch shaped [N, C, H, W].
+        masks: Binary target masks shaped [N, H, W].
+        threshold: Probability threshold for binarizing predictions.
+
+    Returns:
+        Dictionary containing:
+            - "iou": mean intersection-over-union
+            - "pixel_accuracy": per-pixel classification accuracy
+    """
     probs = model.predict_proba(images)
     iou = compute_iou(probs, masks, threshold=threshold)
     pixel_accuracy = float(np.mean(((probs >= threshold).astype(np.uint8) == (masks > 0).astype(np.uint8))))

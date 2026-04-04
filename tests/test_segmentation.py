@@ -8,7 +8,19 @@ MIN_EXPECTED_TRAIN_IOU = 0.80
 MIN_EXPECTED_TRAIN_PIXEL_ACCURACY = 0.90
 
 
-def _synthetic_dataset(samples: int = 24, size: int = 16, seed: int = 3):
+def _synthetic_dataset(samples: int = 24, size: int = 16, seed: int = 3) -> tuple[np.ndarray, np.ndarray]:
+    """Create a simple segmentation dataset with bright rectangular foregrounds.
+
+    Args:
+        samples: Number of image/mask pairs to generate.
+        size: Square image side length.
+        seed: RNG seed for deterministic generation.
+
+    Returns:
+        Tuple of:
+            - images shaped [N, 1, H, W] as float64
+            - masks shaped [N, H, W] as uint8
+    """
     rng = np.random.default_rng(seed)
     images = rng.normal(0, 0.15, size=(samples, 1, size, size))
     masks = np.zeros((samples, size, size), dtype=np.uint8)
