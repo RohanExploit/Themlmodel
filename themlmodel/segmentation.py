@@ -5,6 +5,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
+EPS = 1e-8
+SIGMOID_CLIP_THRESHOLD = 60.0
+
 
 @dataclass(frozen=True)
 class SegmentationConfig:
@@ -15,7 +18,7 @@ class SegmentationConfig:
 
 
 def _sigmoid(x: np.ndarray) -> np.ndarray:
-    x_clipped = np.clip(x, -60.0, 60.0)
+    x_clipped = np.clip(x, -SIGMOID_CLIP_THRESHOLD, SIGMOID_CLIP_THRESHOLD)
     return 1.0 / (1.0 + np.exp(-x_clipped))
 
 
@@ -35,7 +38,7 @@ class TinySegmentationModel:
         if channel_mean.shape != (self.in_channels,) or channel_std.shape != (self.in_channels,):
             raise ValueError("normalization shape mismatch")
         self.channel_mean = channel_mean.astype(np.float64)
-        self.channel_std = np.maximum(channel_std.astype(np.float64), 1e-8)
+        self.channel_std = np.maximum(channel_std.astype(np.float64), EPS)
 
     def predict_proba(self, images: np.ndarray) -> np.ndarray:
         if images.ndim != 4:
@@ -51,7 +54,7 @@ class TinySegmentationModel:
         if masks.ndim != 3:
             raise ValueError("masks must have shape [N, H, W]")
         target = masks.astype(np.float64)
-        eps = 1e-8
+        eps = EPS
 
         pos = np.sum(target) + eps
         neg = target.size - np.sum(target) + eps
