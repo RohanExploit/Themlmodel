@@ -22,6 +22,12 @@ def _sigmoid(x: np.ndarray) -> np.ndarray:
     return 1.0 / (1.0 + np.exp(-x_clipped))
 
 
+def _binarize_mask(values: np.ndarray, threshold: float, positive_on_nonzero: bool = False) -> np.ndarray:
+    if positive_on_nonzero:
+        return (values > 0).astype(np.uint8)
+    return (values >= threshold).astype(np.uint8)
+
+
 class TinySegmentationModel:
     """A minimal from-scratch per-pixel logistic segmentation model."""
 
@@ -89,8 +95,8 @@ def compute_iou(pred_probs: np.ndarray, true_masks: np.ndarray, threshold: float
     """
     if pred_probs.shape != true_masks.shape:
         raise ValueError("predictions and masks must have the same shape")
-    pred = (pred_probs >= threshold).astype(np.uint8)
-    true = (true_masks > 0).astype(np.uint8)
+    pred = _binarize_mask(pred_probs, threshold=threshold)
+    true = _binarize_mask(true_masks, threshold=threshold, positive_on_nonzero=True)
 
     intersection = np.sum(pred & true, axis=(1, 2)).astype(np.float64)
     union = np.sum(pred | true, axis=(1, 2)).astype(np.float64)
@@ -146,5 +152,7 @@ def evaluate_model(model: TinySegmentationModel, images: np.ndarray, masks: np.n
     """
     probs = model.predict_proba(images)
     iou = compute_iou(probs, masks, threshold=threshold)
-    pixel_accuracy = float(np.mean(((probs >= threshold).astype(np.uint8) == (masks > 0).astype(np.uint8))))
+    pred = _binarize_mask(probs, threshold=threshold)
+    true = _binarize_mask(masks, threshold=threshold, positive_on_nonzero=True)
+    pixel_accuracy = float(np.mean(pred == true))
     return {"iou": iou, "pixel_accuracy": pixel_accuracy}
