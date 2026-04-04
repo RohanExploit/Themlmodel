@@ -25,12 +25,12 @@ def _synthetic_dataset(samples: int = 24, size: int = 16, seed: int = 3) -> tupl
     images = rng.normal(0, 0.15, size=(samples, 1, size, size))
     masks = np.zeros((samples, size, size), dtype=np.uint8)
     for i in range(samples):
-        x0 = int(rng.integers(2, size // 2))
-        y0 = int(rng.integers(2, size // 2))
         min_side = max(2, size // 4)
         max_side = max(min_side + 1, size // 3 + 1)
         w = int(rng.integers(min_side, max_side))
         h = int(rng.integers(min_side, max_side))
+        x0 = int(rng.integers(0, max(1, size - w + 1)))
+        y0 = int(rng.integers(0, max(1, size - h + 1)))
         masks[i, y0 : y0 + h, x0 : x0 + w] = 1
         images[i, 0] += masks[i] * 0.9
     return images.astype(np.float64), masks

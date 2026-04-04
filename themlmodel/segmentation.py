@@ -65,7 +65,7 @@ class TinySegmentationModel:
             * (target * np.log(preds + eps) + (1.0 - target) * np.log(1.0 - preds + eps))
         ) / target.size
 
-        grad_logits = sample_weight * (preds - target) / np.prod(target.shape)
+        grad_logits = sample_weight * (preds - target) / target.size
         normalized = (images - self.channel_mean[None, :, None, None]) / self.channel_std[None, :, None, None]
         grad_w = np.sum(normalized * grad_logits[:, None, :, :], axis=(0, 2, 3))
         grad_b = np.sum(grad_logits)
