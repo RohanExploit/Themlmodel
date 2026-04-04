@@ -79,6 +79,7 @@ def compute_iou(pred_probs: np.ndarray, true_masks: np.ndarray, threshold: float
 
     intersection = np.sum(pred & true, axis=(1, 2)).astype(np.float64)
     union = np.sum(pred | true, axis=(1, 2)).astype(np.float64)
+    # If both prediction and target are empty, treat IoU as perfect match (1.0).
     iou_per_sample = np.ones_like(union, dtype=np.float64)
     valid = union > 0.0
     iou_per_sample[valid] = intersection[valid] / union[valid]

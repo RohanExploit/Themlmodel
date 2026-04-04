@@ -4,6 +4,10 @@ import unittest
 from themlmodel import SegmentationConfig, TinySegmentationModel, compute_iou, evaluate_model, train_model
 
 
+MIN_EXPECTED_TRAIN_IOU = 0.80
+MIN_EXPECTED_TRAIN_PIXEL_ACCURACY = 0.90
+
+
 def _synthetic_dataset(samples: int = 24, size: int = 16, seed: int = 3):
     rng = np.random.default_rng(seed)
     images = rng.normal(0, 0.15, size=(samples, 1, size, size))
@@ -38,8 +42,8 @@ class SegmentationTests(unittest.TestCase):
         strong_metrics = evaluate_model(strong_model, images, masks, threshold=0.5)
 
         self.assertGreater(strong_metrics["iou"], weak_metrics["iou"])
-        self.assertGreater(strong_metrics["iou"], 0.80)
-        self.assertGreater(strong_metrics["pixel_accuracy"], 0.90)
+        self.assertGreater(strong_metrics["iou"], MIN_EXPECTED_TRAIN_IOU)
+        self.assertGreater(strong_metrics["pixel_accuracy"], MIN_EXPECTED_TRAIN_PIXEL_ACCURACY)
 
     def test_compute_iou_validates_shape(self):
         pred = np.zeros((2, 8, 8), dtype=np.float64)
