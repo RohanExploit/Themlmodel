@@ -11,7 +11,7 @@ SIGMOID_CLIP_THRESHOLD = 60.0
 
 @dataclass(frozen=True)
 class SegmentationConfig:
-    learning_rate: float = 0.1
+    learning_rate: float = 0.01
     epochs: int = 200
     threshold: float = 0.5
     seed: int = 42
