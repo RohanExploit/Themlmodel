@@ -15,7 +15,8 @@ class SegmentationConfig:
 
 
 def _sigmoid(x: np.ndarray) -> np.ndarray:
-    return 1.0 / (1.0 + np.exp(-x))
+    x_clipped = np.clip(x, -60.0, 60.0)
+    return 1.0 / (1.0 + np.exp(-x_clipped))
 
 
 class TinySegmentationModel:
