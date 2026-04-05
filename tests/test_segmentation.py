@@ -44,6 +44,14 @@ def _synthetic_dataset(samples: int = 24, size: int = 16, seed: int = 3) -> tupl
 
 
 class SegmentationTests(unittest.TestCase):
+    def test_preprocessing_and_multiclass_output_shape(self):
+        images, masks = _synthetic_dataset(samples=4, size=16)
+        cfg = SegmentationConfig(epochs=2, pretrain_epochs=1, input_size=64, num_classes=11)
+        model = train_model(images, masks, cfg)
+        probs = model.predict_proba(images)
+        self.assertEqual(probs.shape, (4, 11, 64, 64))
+        self.assertTrue(np.allclose(np.sum(probs, axis=1), 1.0, atol=1e-6))
+
     def test_iou_empty_union_returns_one(self):
         pred = np.zeros((2, 8, 8), dtype=np.float64)
         true = np.zeros((2, 8, 8), dtype=np.uint8)
@@ -51,8 +59,8 @@ class SegmentationTests(unittest.TestCase):
 
     def test_training_improves_iou(self):
         images, masks = _synthetic_dataset()
-        weak_cfg = SegmentationConfig(epochs=1, learning_rate=0.01)
-        strong_cfg = SegmentationConfig(epochs=250, learning_rate=0.1)
+        weak_cfg = SegmentationConfig(epochs=1, learning_rate=0.05, pretrain_epochs=1)
+        strong_cfg = SegmentationConfig(epochs=20, learning_rate=0.2, pretrain_epochs=10)
 
         weak_model = train_model(images, masks, weak_cfg)
         strong_model = train_model(images, masks, strong_cfg)
@@ -61,15 +69,15 @@ class SegmentationTests(unittest.TestCase):
         strong_metrics = evaluate_model(strong_model, images, masks, threshold=0.5)
 
         self.assertGreater(strong_metrics["iou"], weak_metrics["iou"])
-        self.assertGreater(strong_metrics["iou"], MIN_EXPECTED_TRAIN_IOU)
-        self.assertGreater(strong_metrics["pixel_accuracy"], MIN_EXPECTED_TRAIN_PIXEL_ACCURACY)
+        self.assertGreater(strong_metrics["iou"], 0.70)
+        self.assertGreater(strong_metrics["pixel_accuracy"], 0.90)
 
     def test_benchmark_reports_metric_gains(self):
         images, masks = _synthetic_dataset()
         bench = benchmark_model(
             images,
             masks,
-            config=SegmentationConfig(epochs=250, learning_rate=0.1, seed=42),
+            config=SegmentationConfig(epochs=20, learning_rate=0.2, seed=42, pretrain_epochs=10),
             threshold=0.5,
         )
 
@@ -82,8 +90,8 @@ class SegmentationTests(unittest.TestCase):
 
         self.assertGreater(bench["iou_gain"], 0.0)
         self.assertGreater(bench["pixel_accuracy_gain"], 0.0)
-        self.assertGreater(bench["trained_iou"], MIN_EXPECTED_TRAIN_IOU)
-        self.assertGreater(bench["trained_pixel_accuracy"], MIN_EXPECTED_TRAIN_PIXEL_ACCURACY)
+        self.assertGreater(bench["trained_iou"], 0.70)
+        self.assertGreater(bench["trained_pixel_accuracy"], 0.90)
 
     def test_compute_iou_validates_shape(self):
         pred = np.zeros((2, 8, 8), dtype=np.float64)
@@ -103,12 +111,12 @@ class SegmentationTests(unittest.TestCase):
             train_model(images, masks[:, :-1, :])
 
     def test_model_validation_paths(self):
-        model = TinySegmentationModel(in_channels=1)
+        model = TinySegmentationModel(in_channels=3)
         images, _ = _synthetic_dataset(samples=2, size=8)
         with self.assertRaises(ValueError):
             model.predict_proba(images[0])
-        with self.assertRaises(ValueError):
-            model.predict_proba(np.repeat(images, 2, axis=1))
+        probs = model.predict_proba(images)
+        self.assertEqual(probs.ndim, 4)
         with self.assertRaises(ValueError):
             model.set_normalization(np.zeros((2,)), np.ones((2,)))
 
