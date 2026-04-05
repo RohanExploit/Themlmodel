@@ -38,6 +38,7 @@ class TinySegmentationModel:
         self.in_channels = in_channels
         self.weights = np.zeros((in_channels,), dtype=np.float64)
         self.bias = 0.0
+        self.dice_loss_weight = 0.0
         self.channel_mean = np.zeros((in_channels,), dtype=np.float64)
         self.channel_std = np.ones((in_channels,), dtype=np.float64)
 
@@ -73,20 +74,21 @@ class TinySegmentationModel:
         ) / target.size
 
         grad_logits = sample_weight * (preds - target) / target.size
-        dice_weight = 0.0
-        if hasattr(self, "_dice_loss_weight"):
-            dice_weight = max(0.0, float(self._dice_loss_weight))
+        dice_weight = max(0.0, float(self.dice_loss_weight))
         total_loss = bce_loss
         if dice_weight > 0.0:
-            intersection = np.sum(preds * target)
-            pred_sum = np.sum(preds)
-            target_sum = np.sum(target)
+            intersection = np.sum(preds * target, axis=(1, 2))
+            pred_sum = np.sum(preds, axis=(1, 2))
+            target_sum = np.sum(target, axis=(1, 2))
             dice_num = 2.0 * intersection + eps
             dice_den = pred_sum + target_sum + eps
-            dice_loss = 1.0 - (dice_num / dice_den)
-            grad_dice_pred = -((2.0 * target * dice_den) - dice_num) / (dice_den**2)
-            grad_logits += dice_weight * grad_dice_pred * preds * (1.0 - preds) / target.size
-            total_loss = bce_loss + dice_weight * dice_loss
+            dice_loss = 1.0 - np.mean(dice_num / dice_den)
+            batch_size = target.shape[0]
+            grad_dice_pred = -(
+                (2.0 * target * dice_den[:, None, None]) - dice_num[:, None, None]
+            ) / ((dice_den[:, None, None] ** 2) * batch_size)
+            grad_logits += dice_weight * grad_dice_pred * preds * (1.0 - preds)
+            total_loss = bce_loss + dice_weight * float(dice_loss)
         normalized = (images - self.channel_mean[None, :, None, None]) / self.channel_std[None, :, None, None]
         grad_w = np.sum(normalized * grad_logits[:, None, :, :], axis=(0, 2, 3))
         grad_b = np.sum(grad_logits)
@@ -145,7 +147,7 @@ def train_model(images: np.ndarray, masks: np.ndarray, config: SegmentationConfi
         raise ValueError("dice_loss_weight must be non-negative")
 
     model = TinySegmentationModel(in_channels=images.shape[1], seed=config.seed)
-    model._dice_loss_weight = config.dice_loss_weight
+    model.dice_loss_weight = config.dice_loss_weight
     channel_mean = np.mean(images, axis=(0, 2, 3))
     channel_std = np.std(images, axis=(0, 2, 3))
     model.set_normalization(channel_mean, channel_std)
