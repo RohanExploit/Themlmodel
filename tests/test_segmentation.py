@@ -101,6 +101,16 @@ class SegmentationTests(unittest.TestCase):
             train_model(images, masks[:2])
         with self.assertRaises(ValueError):
             train_model(images, masks[:, :-1, :])
+        with self.assertRaises(ValueError):
+            train_model(images, masks, SegmentationConfig(dice_loss_weight=-0.1))
+
+    def test_training_with_dice_loss_weight_reaches_quality_threshold(self):
+        images, masks = _synthetic_dataset(samples=32, size=20, seed=7)
+        cfg = SegmentationConfig(epochs=220, learning_rate=0.08, dice_loss_weight=0.3, seed=42)
+        model = train_model(images, masks, cfg)
+        metrics = evaluate_model(model, images, masks, threshold=0.5)
+        self.assertGreater(metrics["iou"], MIN_EXPECTED_TRAIN_IOU)
+        self.assertGreater(metrics["pixel_accuracy"], MIN_EXPECTED_TRAIN_PIXEL_ACCURACY)
 
     def test_model_validation_paths(self):
         model = TinySegmentationModel(in_channels=1)
