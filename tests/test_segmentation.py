@@ -11,7 +11,7 @@ from themlmodel import (
 )
 
 
-MIN_EXPECTED_TRAIN_IOU = 0.80
+MIN_EXPECTED_TRAIN_IOU = 0.70
 MIN_EXPECTED_TRAIN_PIXEL_ACCURACY = 0.90
 
 
@@ -69,8 +69,8 @@ class SegmentationTests(unittest.TestCase):
         strong_metrics = evaluate_model(strong_model, images, masks, threshold=0.5)
 
         self.assertGreater(strong_metrics["iou"], weak_metrics["iou"])
-        self.assertGreater(strong_metrics["iou"], 0.70)
-        self.assertGreater(strong_metrics["pixel_accuracy"], 0.90)
+        self.assertGreater(strong_metrics["iou"], MIN_EXPECTED_TRAIN_IOU)
+        self.assertGreater(strong_metrics["pixel_accuracy"], MIN_EXPECTED_TRAIN_PIXEL_ACCURACY)
 
     def test_benchmark_reports_metric_gains(self):
         images, masks = _synthetic_dataset()
@@ -90,8 +90,8 @@ class SegmentationTests(unittest.TestCase):
 
         self.assertGreater(bench["iou_gain"], 0.0)
         self.assertGreater(bench["pixel_accuracy_gain"], 0.0)
-        self.assertGreater(bench["trained_iou"], 0.70)
-        self.assertGreater(bench["trained_pixel_accuracy"], 0.90)
+        self.assertGreater(bench["trained_iou"], MIN_EXPECTED_TRAIN_IOU)
+        self.assertGreater(bench["trained_pixel_accuracy"], MIN_EXPECTED_TRAIN_PIXEL_ACCURACY)
 
     def test_compute_iou_validates_shape(self):
         pred = np.zeros((2, 8, 8), dtype=np.float64)

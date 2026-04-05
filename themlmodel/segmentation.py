@@ -9,12 +9,15 @@ EPS = 1e-8
 SIGMOID_CLIP_THRESHOLD = 60.0
 DEFAULT_NUM_CLASSES = 11
 DEFAULT_INPUT_SIZE = 256
+DEFAULT_TRAIN_EPOCHS = 20
+ENCODER_TARGET_SIZE = 64
+DECODER_BLEND_WEIGHT = 0.2
 
 
 @dataclass(frozen=True)
 class SegmentationConfig:
     learning_rate: float = 0.01
-    epochs: int = 20
+    epochs: int = DEFAULT_TRAIN_EPOCHS
     threshold: float = 0.5
     seed: int = 42
     input_size: int = DEFAULT_INPUT_SIZE
@@ -73,7 +76,7 @@ class TinySegmentationModel:
     def _resize_nearest(self, images: np.ndarray) -> np.ndarray:
         _, _, h, w = images.shape
         if h == self.input_size and w == self.input_size:
-            return images
+            return images.astype(np.float64)
         y_idx = np.clip(np.round(np.linspace(0, h - 1, self.input_size)).astype(np.int64), 0, h - 1)
         x_idx = np.clip(np.round(np.linspace(0, w - 1, self.input_size)).astype(np.int64), 0, w - 1)
         return images[:, :, y_idx][:, :, :, x_idx]
@@ -106,7 +109,7 @@ class TinySegmentationModel:
             logits = feats @ self.rotation_weights.T + self.rotation_bias[None, :]
             probs = _softmax(logits, axis=1)
             one_hot = np.eye(4)[y]
-            grad = (probs - one_hot) / y.size
+            grad = (probs - one_hot) / y.shape[0]
             grad_w = grad.T @ feats
             grad_b = np.sum(grad, axis=0)
             self.rotation_weights -= lr * grad_w
@@ -135,6 +138,7 @@ class TinySegmentationModel:
         ) / 9.0
 
     def _encode(self, normalized: np.ndarray) -> tuple[np.ndarray, list[np.ndarray]]:
+        # Keep encoder lightweight by collapsing RGB channels to one feature map.
         x = np.mean(normalized, axis=1)
         skips: list[np.ndarray] = []
         for _ in self.encoder_filters:
@@ -164,9 +168,9 @@ class TinySegmentationModel:
         return x[:, : self.input_size, : self.input_size]
 
     def _decoder_map(self, normalized: np.ndarray) -> np.ndarray:
-        stride = max(1, self.input_size // 64)
-        reduced = normalized[:, :, ::stride, ::stride]
-        bottleneck, skips = self._encode(reduced)
+        stride = max(1, self.input_size // ENCODER_TARGET_SIZE)
+        downsampled = normalized[:, :, ::stride, ::stride]
+        bottleneck, skips = self._encode(downsampled)
         attended_skips = self._apply_attention(skips)
         decoded = self._decode(bottleneck, attended_skips)
         upsampled = np.repeat(np.repeat(decoded, stride, axis=1), stride, axis=2)
@@ -176,7 +180,7 @@ class TinySegmentationModel:
         decoder_map = self._decoder_map(normalized)
         diff = normalized[:, None, :, :, :] - self.class_prototypes[None, :, :, None, None]
         color_score = -np.sum(diff * diff, axis=2)
-        return color_score + self.class_bias[None, :, None, None] + 0.2 * decoder_map[:, None, :, :]
+        return color_score + self.class_bias[None, :, None, None] + DECODER_BLEND_WEIGHT * decoder_map[:, None, :, :]
 
     def predict_proba(self, images: np.ndarray) -> np.ndarray:
         normalized = self.preprocess_images(images)
@@ -200,7 +204,8 @@ class TinySegmentationModel:
         ) / class_counts[:, None]
         self.class_prototypes = (1.0 - lr) * self.class_prototypes + lr * prototype_update
         class_freq = class_counts / np.sum(class_counts)
-        self.class_bias = np.log(np.maximum(class_freq, EPS))
+        bias_target = np.log(np.maximum(class_freq, EPS))
+        self.class_bias = (1.0 - lr) * self.class_bias + lr * bias_target
         loss = -np.mean(np.sum(one_hot * np.log(np.maximum(probs.transpose(0, 2, 3, 1), EPS)), axis=-1))
         return float(loss)
 
@@ -321,9 +326,14 @@ def benchmark_model(
     if images.shape[0] != masks.shape[0] or images.shape[2:] != masks.shape[1:]:
         raise ValueError("image/mask batch or spatial shape mismatch")
 
-    temp = TinySegmentationModel(in_channels=3, num_classes=config.num_classes, input_size=config.input_size, seed=config.seed)
-    rgb_images = temp._ensure_rgb(images)
-    resized = temp._resize_nearest(rgb_images)
+    preprocessing_model = TinySegmentationModel(
+        in_channels=3,
+        num_classes=config.num_classes,
+        input_size=config.input_size,
+        seed=config.seed,
+    )
+    rgb_images = preprocessing_model._ensure_rgb(images)
+    resized = preprocessing_model._resize_nearest(rgb_images)
     channel_mean = np.mean(resized, axis=(0, 2, 3))
     channel_std = np.std(resized, axis=(0, 2, 3))
 
