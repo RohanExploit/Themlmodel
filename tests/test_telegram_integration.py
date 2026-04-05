@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import patch
+from urllib import error
 
 from themlmodel.telegram_integration import (
     TELEGRAM_TOKEN_ENV_VAR,
@@ -42,7 +43,16 @@ class TelegramIntegrationTests(unittest.TestCase):
         called_req = mocked_urlopen.call_args.args[0]
         self.assertEqual(called_req.full_url, "https://api.telegram.org/botbot-token/sendMessage")
         self.assertEqual(called_req.data, b"chat_id=42&text=hello")
-        self.assertEqual(called_req.get_header("Content-type"), "application/x-www-form-urlencoded")
+        headers = {k.lower(): v for k, v in called_req.header_items()}
+        self.assertEqual(headers.get("content-type"), "application/x-www-form-urlencoded")
+
+    def test_send_telegram_message_wraps_network_errors(self):
+        with patch(
+            "themlmodel.telegram_integration.request.urlopen",
+            side_effect=error.URLError("network down"),
+        ):
+            with self.assertRaises(RuntimeError):
+                send_telegram_message(chat_id=42, text="hello", token="bot-token")
 
 
 if __name__ == "__main__":
