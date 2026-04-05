@@ -15,6 +15,7 @@ class SegmentationConfig:
     epochs: int = 200
     threshold: float = 0.5
     seed: int = 42
+    dice_loss_weight: float = 0.2
 
 
 def _sigmoid(x: np.ndarray) -> np.ndarray:
@@ -66,19 +67,33 @@ class TinySegmentationModel:
         neg = target.size - np.sum(target) + eps
         pos_weight = neg / pos
         sample_weight = np.where(target > 0, pos_weight, 1.0)
-        loss = -np.sum(
+        bce_loss = -np.sum(
             sample_weight
             * (target * np.log(preds + eps) + (1.0 - target) * np.log(1.0 - preds + eps))
         ) / target.size
 
         grad_logits = sample_weight * (preds - target) / target.size
+        dice_weight = 0.0
+        if hasattr(self, "_dice_loss_weight"):
+            dice_weight = max(0.0, float(self._dice_loss_weight))
+        total_loss = bce_loss
+        if dice_weight > 0.0:
+            intersection = np.sum(preds * target)
+            pred_sum = np.sum(preds)
+            target_sum = np.sum(target)
+            dice_num = 2.0 * intersection + eps
+            dice_den = pred_sum + target_sum + eps
+            dice_loss = 1.0 - (dice_num / dice_den)
+            grad_dice_pred = -((2.0 * target * dice_den) - dice_num) / (dice_den**2)
+            grad_logits += dice_weight * grad_dice_pred * preds * (1.0 - preds) / target.size
+            total_loss = bce_loss + dice_weight * dice_loss
         normalized = (images - self.channel_mean[None, :, None, None]) / self.channel_std[None, :, None, None]
         grad_w = np.sum(normalized * grad_logits[:, None, :, :], axis=(0, 2, 3))
         grad_b = np.sum(grad_logits)
 
         self.weights -= lr * grad_w
         self.bias -= lr * grad_b
-        return float(loss)
+        return float(total_loss)
 
 
 def compute_iou(pred_probs: np.ndarray, true_masks: np.ndarray, threshold: float = 0.5) -> float:
@@ -126,8 +141,11 @@ def train_model(images: np.ndarray, masks: np.ndarray, config: SegmentationConfi
         raise ValueError("masks must have shape [N, H, W]")
     if images.shape[0] != masks.shape[0] or images.shape[2:] != masks.shape[1:]:
         raise ValueError("image/mask batch or spatial shape mismatch")
+    if config.dice_loss_weight < 0.0:
+        raise ValueError("dice_loss_weight must be non-negative")
 
     model = TinySegmentationModel(in_channels=images.shape[1], seed=config.seed)
+    model._dice_loss_weight = config.dice_loss_weight
     channel_mean = np.mean(images, axis=(0, 2, 3))
     channel_std = np.std(images, axis=(0, 2, 3))
     model.set_normalization(channel_mean, channel_std)
